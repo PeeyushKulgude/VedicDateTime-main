@@ -1,0 +1,281 @@
+---
+title: "Visualizing the Indian Panchanga with VedicDateTime"
+author: "Peeyush"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 14, fig.height = 8
+)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(tidyr)
+library(forcats)
+# library(VedicDateTime)
+# source("VedicDateTime_functions.R")
+# Load all custom functions from this folder
+files <- list.files(pattern = "\\.R$", full.names = TRUE)
+for (f in files) source(f)
+```
+
+# Introduction
+
+The **VedicDateTime** package brings the power of the Indian lunisolar calendar (Panchanga) to R, allowing users to calculate and visualize Tithi, Nakshatra, Rashi, Ritu, and more, for any date and location.
+In this document, we demonstrate how to use these functions for **rich, informative, and beautiful visualizations** using `ggplot2`. All examples use New Delhi, India.
+
+---
+
+## Panchanga Data Preparation
+
+First, we generate Panchanga data for July 2024 in New Delhi, extracting Tithi, Nakshatra, Rashi, and Ritu for each day. This forms the basis for our visualizations.
+
+```{r panchanga-data}
+dates <- seq.Date(as.Date("2024-07-01"), as.Date("2024-07-31"), by = "1 day")
+jd <- gregorian_to_jd(day(dates), month(dates), year(dates))
+place <- c(28.6139, 77.2090, 5.5) # New Delhi
+
+# Compute panchanga columns for each day
+panchanga <- data.frame(
+  date = dates,
+  jd = jd,
+  tithi = sapply(jd, function(x) get_tithi_name(x, place)),
+  nakshatra = sapply(jd, function(x) get_nakshatra_name(x, place)$nakshatra[1]),
+  rashi = get_rashi_name(jd),
+  ritu = get_ritu_name(month(dates))
+)
+
+head(panchanga)
+```
+
+---
+
+## 1. Tithi Calendar Strip
+
+**Purpose:**
+This plot displays the progression of Tithis (lunar days) across the month, with each tile representing the Tithi for a particular day. This visually encodes the lunar rhythm and the occurrence of special days like Amavasya and Poornima.
+
+```{r tithi-strip}
+ggplot(panchanga, aes(x = date, y = 1, fill = tithi)) +
+  geom_tile() +
+  scale_fill_viridis_d(option = "plasma") +
+  theme_minimal() +
+  labs(
+    title = "Tithi Calendar Strip - July 2024 (New Delhi)",
+    y = "",
+    fill = "Tithi"
+  ) +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+```
+
+---
+
+## 2. Day Length Through the Year
+
+**Purpose:**
+This plot shows the variation in day length (sunrise to sunset) across an entire year, illustrating the impact of latitude and season on sunlight duration.
+
+```{r daylength-year, fig.height=5}
+full_year_dates <- seq.Date(as.Date("2024-01-01"), as.Date("2024-12-31"), by = "1 day")
+jd_full <- gregorian_to_jd(day(full_year_dates), month(full_year_dates), year(full_year_dates))
+place <- c(28.6139, 77.2090, 5.5)
+
+daylen <- sapply(jd_full, function(x) day_duration(x, place)$duration_hours)
+
+ggplot(data.frame(date = full_year_dates, day_length = daylen), aes(x = date, y = day_length)) +
+  geom_line(color = "dodgerblue") +
+  theme_minimal() +
+  labs(
+    title = "Day Length Throughout the Year (New Delhi)",
+    x = "Date",
+    y = "Day Length (hours)"
+  )
+```
+
+**Interpretation:**
+Note the longest days around the solstice and shortest days in winter, a hallmark of Earth’s axial tilt.
+
+---
+
+## 3. Nakshatra Frequency Barplot
+
+**Purpose:**
+To reveal which Nakshatras are most frequent in the selected month. Nakshatras are 27 divisions of the sky in Indian astronomy, each day aligned with one.
+
+```{r nakshatra-freq}
+nak_names <- sapply(jd, function(x) get_nakshatra_name(x, place)$nakshatra[1])
+nak_df <- data.frame(nakshatra = nak_names) %>% count(nakshatra)
+
+ggplot(nak_df, aes(x = reorder(nakshatra, n), y = n)) +
+  geom_col(fill = "darkorchid") +
+  coord_flip() +
+  theme_minimal() +
+  labs(
+    title = "Nakshatra Frequency in July 2024",
+    x = "Nakshatra",
+    y = "Days"
+  )
+```
+
+**Interpretation:**
+Observe which Nakshatras dominate the month, and their frequency—a direct window into the lunar sky divisions.
+
+---
+
+## 4. Tithi and Nakshatra Strips with Enhanced Color
+
+**Purpose:**
+To compare the progression of Tithis and Nakshatras, with each color uniquely identifying the calendar entity.
+
+### Tithi Strip
+
+```{r tithi-strip-vivid}
+ggplot(panchanga, aes(x = date, y = 1, fill = fct_inorder(tithi))) +
+  geom_tile(height = 0.8) +
+  scale_fill_viridis_d(option = "plasma", guide = guide_legend(nrow = 20)) +
+  labs(title = "Daily Tithi for July 2024 (New Delhi)", fill = "Tithi", y = NULL, x = "Date") +
+  theme_minimal(base_size = 13) +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        panel.grid = element_blank())
+```
+
+### Nakshatra Strip
+
+```{r nakshatra-strip}
+ggplot(panchanga, aes(x = date, y = 1, fill = fct_inorder(nakshatra))) +
+  geom_tile(height = 0.8) +
+  scale_fill_viridis_d(option = "cividis", guide = guide_legend(nrow = 10)) +
+  labs(title = "Daily Nakshatra for July 2024 (New Delhi)", fill = "Nakshatra", y = NULL, x = "Date") +
+  theme_minimal(base_size = 13) +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        panel.grid = element_blank())
+```
+
+---
+
+## 5. Nakshatra Frequency (Horizontal Barplot)
+
+**Purpose:**
+An alternate, more compact barplot to show which Nakshatras dominate the month.
+
+```{r nakshatra-bar-horiz}
+panchanga %>%
+  count(nakshatra) %>%
+  ggplot(aes(x = fct_reorder(nakshatra, n), y = n)) +
+  geom_col(fill = "darkorange") +
+  coord_flip() +
+  labs(title = "Frequency of Each Nakshatra (July 2024)", x = "Nakshatra", y = "Days") +
+  theme_minimal(base_size = 13)
+```
+
+---
+
+## 6. Day Length in July (Line Plot)
+
+**Purpose:**
+To see how much day length varies even within a single month at a given location.
+
+```{r daylength-july}
+panchanga$day_length <- sapply(panchanga$jd, function(x) day_duration(x, place)$duration_hours)
+
+ggplot(panchanga, aes(x = date, y = day_length)) +
+  geom_line(color = "seagreen", size = 1) +
+  labs(title = "Day Length in July 2024 (New Delhi)", x = "Date", y = "Day Length (hours)") +
+  theme_minimal(base_size = 13)
+```
+
+---
+
+## 7. Lunar Rashi Block Plot
+
+**Purpose:**
+Shows the lunar zodiac sign (Rashi) for each day, visualizing how the moon traverses the zodiac over the month.
+
+```{r rashi-block}
+ggplot(panchanga, aes(x = date, y = 1, fill = fct_inorder(rashi))) +
+  geom_tile(height = 0.8) +
+  scale_fill_viridis_d(option = "turbo", guide = guide_legend(nrow = 2)) +
+  labs(title = "Lunar Rashi by Day (July 2024)", fill = "Rashi", y = NULL, x = "Date") +
+  theme_minimal(base_size = 13) +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        panel.grid = element_blank())
+```
+
+---
+
+## 8. Highlighting Special Tithis: Amavasya and Poornima
+
+**Purpose:**
+To visually pick out the new moon (Amavasya) and full moon (Poornima) days in the Tithi strip. Special days are marked with red points.
+
+```{r amavasya-poornima-highlight}
+panchanga$is_special <- grepl("Amavasya|Poornima", panchanga$tithi)
+
+ggplot(panchanga, aes(x = date, y = 1, fill = tithi)) +
+  geom_tile(height = 0.8) +
+  geom_point(data = subset(panchanga, is_special), aes(x = date, y = 1.1), color = "red", size = 4) +
+  scale_fill_viridis_d(option = "magma") +
+  labs(title = "Tithi with Amavasya/Poornima Highlight", y = NULL, x = "Date") +
+  theme_minimal(base_size = 13) +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        panel.grid = element_blank())
+```
+
+---
+
+## 9. Panchanga Elements with Direct Labels
+
+**Purpose:**
+Removes the legend entirely and labels each tile with the actual Panchanga value (vertical text), providing an at-a-glance calendar strip.
+
+```{r panchanga-direct-labels}
+long_pan <- panchanga %>%
+  pivot_longer(cols = c(tithi, nakshatra, rashi, ritu), names_to = "element", values_to = "value")
+
+ggplot(long_pan, aes(x = date, y = 1, fill = fct_inorder(value))) +
+  geom_tile(height = 0.8) +
+  geom_text(
+    aes(label = value),
+    angle = 90,
+    vjust = 0.5, hjust = 0,
+    size = 2.8,
+    color = "black",
+    fontface = "bold"
+  ) +
+  facet_wrap(~element, ncol = 1, scales = "free_y") +
+  labs(
+    title = "Vedic Panchanga Elements (July 2024)",
+    y = NULL, x = "Date"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "none"
+  )
+```
+
+---
+
+# Conclusion
+
+These visualizations not only **illustrate the astronomical and calendrical depth of the Indian Panchanga**, but also demonstrate how the VedicDateTime package, when paired with tidyverse and ggplot2, enables modern, reproducible, and visually rich calendar analysis.
+
+*For questions, contributions, or more visualization ideas, see the package documentation and vignettes!*
+
+```
+
+---
+
+```
